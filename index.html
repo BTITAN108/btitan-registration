@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>B-TITAN Registration</title>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+
+<style>
+body{
+margin:0;
+font-family:Arial,sans-serif;
+background:#090909;
+color:#fff;
+text-align:center;
+}
+.box{
+max-width:420px;
+margin:50px auto;
+padding:30px 20px;
+}
+h1{
+color:#f5c542;
+font-size:32px;
+}
+.card{
+background:#151515;
+border:1px solid #444;
+border-radius:18px;
+padding:25px;
+}
+.info{
+margin:15px 0;
+color:#ccc;
+line-height:1.6;
+}
+input,button{
+width:100%;
+box-sizing:border-box;
+padding:15px;
+margin:10px 0;
+border-radius:10px;
+font-size:16px;
+}
+input{
+background:#222;
+color:#fff;
+border:1px solid #555;
+}
+input:focus{
+outline:none;
+border:2px solid #f5c542;
+}
+button{
+background:#f5c542;
+color:#000;
+border:0;
+font-weight:bold;
+}
+button:disabled{
+opacity:.5;
+}
+#status{
+margin-top:20px;
+line-height:1.6;
+}
+a{
+color:#f5c542;
+}
+</style>
+</head>
+
+<body>
+
+<div class="box">
+<h1>⚡ B-TITAN</h1>
+
+<div class="card">
+
+<h2>Registration</h2>
+
+<div class="info">
+Registration: <b>0.001 BTCB</b><br>
+Enter your Referrer ID below
+</div>
+
+<input
+id="referrer"
+type="number"
+inputmode="numeric"
+placeholder="Enter Referrer ID"
+min="1"
+>
+
+<button id="connect">
+🔗 Connect Wallet
+</button>
+
+<button id="register" disabled>
+🚀 Register Now
+</button>
+
+<div class="info">
+Use BNB Smart Chain (Chain ID 56)
+</div>
+
+<div id="status">
+Wallet not connected
+</div>
+
+</div>
+</div>
+
+<script>
+
+const BTITAN =
+"0xD6759d47Fccdef7b8E318479cEC4D128366f2a44";
+
+const BTCB =
+"0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c";
+
+const AMOUNT = "0.001";
+
+const erc20Abi = [
+"function approve(address spender,uint256 amount) returns(bool)",
+"function balanceOf(address owner) view returns(uint256)"
+];
+
+const btitanAbi = [
+"function registrationExt(uint256 referrerId)"
+];
+
+let provider;
+let signer;
+let account;
+
+const referrerInput =
+document.getElementById("referrer");
+
+const connectBtn =
+document.getElementById("connect");
+
+const registerBtn =
+document.getElementById("register");
+
+const status =
+document.getElementById("status");
+
+function setStatus(message){
+status.innerHTML = message;
+}
+
+async function connectWallet(){
+
+try{
+
+if(!window.ethereum){
+
+setStatus(
+"❌ Please open this page inside a Web3 wallet browser."
+);
+
+return;
+}
+
+provider =
+new ethers.BrowserProvider(window.ethereum);
+
+await provider.send(
+"eth_requestAccounts",
+[]
+);
+
+let network =
+await provider.getNetwork();
+
+if(network.chainId !== 56n){
+
+try{
+
+await window.ethereum.request({
+method:"wallet_switchEthereumChain",
+params:[
+{chainId:"0x38"}
+]
+});
+
+provider =
+new ethers.BrowserProvider(window.ethereum);
+
+}catch(error){
+
+setStatus(
+"❌ Please switch your wallet to BNB Smart Chain."
+);
+
+return;
+}
+}
+
+signer =
+await provider.getSigner();
+
+account =
+await signer.getAddress();
+
+connectBtn.innerText =
+account.slice(0,6) +
+"..." +
+account.slice(-4);
+
+registerBtn.disabled = false;
+
+setStatus(
+"✅ Wallet connected<br>" +
+"BNB Smart Chain ready"
+);
+
+}catch(error){
+
+setStatus(
+"❌ " +
+(error.shortMessage ||
+error.message ||
+"Wallet connection failed")
+);
+
+}
+
+}
+
+async function register(){
+
+try{
+
+if(!signer){
+
+await connectWallet();
+
+if(!signer){
+return;
+}
+
+}
+
+const referrerValue =
+referrerInput.value.trim();
+
+if(!referrerValue){
+
+setStatus(
+"❌ Please enter Referrer ID."
+);
+
+return;
+}
+
+if(!/^[0-9]+$/.test(referrerValue)){
+
+setStatus(
+"❌ Referrer ID must contain numbers only."
+);
+
+return;
+}
+
+const referrerId =
+BigInt(referrerValue);
+
+registerBtn.disabled = true;
+
+const btc =
+new ethers.Contract(
+BTCB,
+erc20Abi,
+signer
+);
+
+const amount =
+ethers.parseUnits(
+AMOUNT,
+18
+);
+
+setStatus(
+"⏳ Checking BTCB balance..."
+);
+
+const balance =
+await btc.balanceOf(account);
+
+if(balance < amount){
+
+setStatus(
+"❌ Insufficient BTCB balance.<br>" +
+"Required: 0.001 BTCB"
+);
+
+registerBtn.disabled = false;
+return;
+}
+
+setStatus(
+"⏳ Step 1: Approving 0.001 BTCB..."
+);
+
+const approveTx =
+await btc.approve(
+BTITAN,
+amount
+);
+
+setStatus(
+"⏳ Waiting for BTCB approval..."
+);
+
+await approveTx.wait();
+
+setStatus(
+"✅ Approval confirmed<br>" +
+"⏳ Step 2: Sending registration..."
+);
+
+const contract =
+new ethers.Contract(
+BTITAN,
+btitanAbi,
+signer
+);
+
+const tx =
+await contract.registrationExt(
+referrerId
+);
+
+setStatus(
+"⏳ Registration transaction submitted...<br>" +
+"<a target='_blank' href='https://bscscan.com/tx/" +
+tx.hash +
+"'>View Transaction</a>"
+);
+
+await tx.wait();
+
+setStatus(
+"🎉 <b>Registration Successful!</b><br><br>" +
+"Referrer ID: <b>" +
+referrerValue +
+"</b><br>" +
+"Amount: <b>0.001 BTCB</b><br><br>" +
+"<a target='_blank' href='https://bscscan.com/tx/" +
+tx.hash +
+"'>View on BscScan</a>"
+);
+
+}catch(error){
+
+setStatus(
+"❌ Transaction failed:<br>" +
+(error.shortMessage ||
+error.reason ||
+error.message ||
+"Unknown error")
+);
+
+registerBtn.disabled = false;
+
+}
+
+}
+
+connectBtn.onclick =
+connectWallet;
+
+registerBtn.onclick =
+register;
+
+</script>
+
+</body>
+</html>
